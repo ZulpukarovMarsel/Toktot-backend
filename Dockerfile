@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt /toktot-backend
 
-RUN pip install --upgrade pip && pip install -r /toktot-backendrequirements.txt
+RUN pip install --upgrade pip && pip install -r /toktot-backend/requirements.txt
 
 COPY . /toktot-backend/
 
