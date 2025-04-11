@@ -15,11 +15,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt /toktot-backend
 
-RUN pip install --upgrade pip && pip install -r /Goldmark-backend/requirements.txt
+RUN pip install --upgrade pip && pip install -r /toktot-backendrequirements.txt
 
 COPY . /toktot-backend/
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "PYTHONPATH=/Goldmark-backend/src gunicorn core.wsgi:application --bind 0.0.0.0:8000"]
+CMD ["sh", "-c", "PYTHONPATH=/toktot-backend/src gunicorn core.wsgi:application --bind 0.0.0.0:8000"]
 # CMD ["python", "app/manage.py", "runserver", "0.0.0.0:8000"]
