@@ -9,10 +9,10 @@ services:
       - .env
     environment:
       - PYTHONPATH=/toktot-backend/src
-      - DJANGO_SETTINGS_MODULE=core.settings.base
+      - DJANGO_SETTINGS_MODULE=config.settings.base
     command: >
       sh -c "python manage.py collectstatic --noinput &&
-            gunicorn core.wsgi:application --bind 0.0.0.0:8000"
+            gunicorn config.wsgi:application --bind 0.0.0.0:8000"
     # command: gunicorn config.wsgi:application --bind 0.0.0.0:8000
     volumes:
       - .:/toktot-backend

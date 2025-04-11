@@ -21,5 +21,5 @@ COPY . /toktot-backend/
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "PYTHONPATH=/toktot-backend/src gunicorn core.wsgi:application --bind 0.0.0.0:8000"]
+CMD ["sh", "-c", "PYTHONPATH=/toktot-backend/src gunicorn config.wsgi:application --bind 0.0.0.0:8000"]
 # CMD ["python", "app/manage.py", "runserver", "0.0.0.0:8000"]
