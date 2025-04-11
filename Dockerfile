@@ -3,7 +3,7 @@ FROM python:3.13-slim
 WORKDIR /toktot-backend/
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONNUNBUFFERED=1
+    PYTHONUNBUFFERED=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
