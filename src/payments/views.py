@@ -1,92 +1,138 @@
+import paypalrestsdk
+from django.conf import settings
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from decimal import Decimal
-import requests
-import uuid
+from .serializers import (
+    AddPayPalCardSerializer, PayPalCardSerializer, ChargeWithSavedCardSerializer
+)
+from .models import PayPalCard
 
-from .models import Card
-from .serializers import TopUpSerializer, AddCardSerializer, CardSerializer
+
+class ChargeWithSavedCardView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = ChargeWithSavedCardSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            card = PayPalCard.objects.get(
+                id=serializer.validated_data['card_id'], user=request.user
+            )
+        except PayPalCard.DoesNotExist:
+            return Response({"error": "Card not found"}, status=404)
+
+        paypalrestsdk.configure({
+            "mode": settings.PAYPAL_MODE,
+            "client_id": settings.PAYPAL_CLIENT_ID,
+            "client_secret": settings.PAYPAL_CLIENT_SECRET
+        })
+
+        payment = paypalrestsdk.Payment({
+            "intent": "sale",
+            "payer": {
+                "payment_method": "credit_card",
+                "funding_instruments": [{
+                    "credit_card_token": {
+                        "credit_card_id": card.payment_token,
+                        "cvv2": serializer.validated_data['cvv']
+                    }
+                }]
+            },
+            "transactions": [{
+                "amount": {
+                    "total": str(serializer.validated_data['amount']),
+                    "currency": "USD"
+                },
+                "description": "Balance top-up"
+            }]
+        })
+
+        if payment.create() and payment.execute():
+            request.user.balance += Decimal(serializer.validated_data['amount'])
+            request.user.save()
+            return Response({"status": "success", "new_balance": request.user.balance})
+        else:
+            return Response({"error": payment.error}, status=400)
 
 
-class CardsView(APIView):
+class PayPalCardsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        user = request.user
-        cards = Card.objects.filter(user=user)
-        serializer = CardSerializer(cards, many=True)
+        cards = PayPalCard.objects.filter(user=request.user)
+        serializer = PayPalCardSerializer(cards, many=True)
         return Response(serializer.data)
 
     def post(self, request):
-        serializer = AddCardSerializer(data=request.data)
+        serializer = AddPayPalCardSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        user = request.user
-        data = serializer.validated_data
-
-        payload = {
-            "card_number": data['card_number'],
-            "expiry_month": data['expiry_month'],
-            "expiry_year": data['expiry_year'],
-            "cvv": data['cvv'],
-            "user_id": str(user.id),
-        }
-
-        response = requests.post("https://api.optimapay.kg/add_card", json=payload)
-        if response.status_code == 200:
-            res = response.json()
-            if res.get("success"):
-                card_token = res["card_token"]
-                last4 = res.get("last4", data['card_number'][-4:])
-                brand = res.get("brand", "unknown")
-
-                Card.objects.create(
-                    user=user,
-                    token=card_token,
-                    last4=last4,
-                    brand=brand
-                )
-
-                return Response({"status": "success", "message": "Карта добавлена"})
-            else:
-                return Response({"status": "fail", "message": res.get("error_message")})
-        return Response({"status": "error", "details": response.text}, status=500)
-
-
-class TopUpBalanceView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        serializer = TopUpSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        amount = serializer.validated_data['amount']
-        card_id = serializer.validated_data['card_id']
-        cvv = serializer.validated_data['cvv']
-        user = request.user
+        paypalrestsdk.configure({
+            "mode": settings.PAYPAL_MODE,
+            "client_id": settings.PAYPAL_CLIENT_ID,
+            "client_secret": settings.PAYPAL_CLIENT_SECRET
+        })
 
         try:
-            card = Card.objects.get(id=card_id, user=user)
-        except Card.DoesNotExist:
-            return Response({"error": "Карта не найдена"}, status=404)
+            payment = paypalrestsdk.Payment({
+                "intent": "sale",
+                "payer": {
+                    "payment_method": "credit_card",
+                    "funding_instruments": [{
+                        "credit_card": {
+                            "number": serializer.validated_data['card_number'],
+                            "type": self._detect_card_type(serializer.validated_data['card_number']),
+                            "expire_month": serializer.validated_data['expiry_month'],
+                            "expire_year": serializer.validated_data['expiry_year'],
+                            "cvv2": serializer.validated_data['cvv']
+                        }
+                    }]
+                },
+                "transactions": [{
+                    "amount": {
+                        "total": "1.00",
+                        "currency": "USD"
+                    },
+                    "payee": {
+                        "email": "sb-zvumz39761705@business.example.com"
+                    },
+                    "description": "Card verification"
+                }]
+            })
 
-        payload = {
-            "amount": float(amount),
-            "currency": "KGS",
-            "card_token": card.token,
-            "cvv": cvv,
-            "order_id": f"{user.id}_topup_{uuid.uuid4()}",
-            "description": "Пополнение баланса парковки"
-        }
+            if payment.create():
+                funding_instr = payment.payer.funding_instruments[0].credit_card
+                card = PayPalCard.objects.create(
+                    user=request.user,
+                    payment_token=funding_instr.credit_card_token.credit_card_id,
+                    last4=funding_instr.number[-4:],
+                    brand=funding_instr.type.lower(),
+                    expiry_month=funding_instr.expire_month,
+                    expiry_year=funding_instr.expire_year
+                )
 
-        response = requests.post("https://api.optimapay.kg/topup", json=payload)
-        if response.status_code == 200:
-            data = response.json()
-            if data.get("success"):
-                user.balance += Decimal(amount)
-                user.save()
-                return Response({"status": "success", "message": "Баланс пополнен"})
+                if not PayPalCard.objects.filter(user=request.user, is_default=True).exists():
+                    card.is_default = True
+                    card.save()
+
+                return Response(PayPalCardSerializer(card).data, status=201)
             else:
-                return Response({"status": "fail", "message": data.get("error_message")})
-        return Response({"status": "error", "details": response.text}, status=500)
+                return Response({"error": payment.error}, status=400)
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=400)
+
+    def _detect_card_type(self, card_number: str) -> str:
+        """Определяет тип карты по её номеру"""
+        if card_number.startswith('4'):
+            return 'visa'
+        if card_number[:2].isdigit() and 51 <= int(card_number[:2]) <= 55:
+            return 'mastercard'
+        if card_number.startswith('34') or card_number.startswith('37'):
+            return 'amex'
+        if card_number.startswith('6'):
+            return 'discover'
+        return 'visa'

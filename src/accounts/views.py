@@ -46,7 +46,9 @@ class SignInAPIView(generics.CreateAPIView):
         serializer = self.serializer_class(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        user = authenticate(**serializer.validated_data)
+        phone = serializer.validated_data['phone']
+        user = User.objects.get(phone=phone)
+
         if not user:
             raise exceptions.AuthenticationFailed
 

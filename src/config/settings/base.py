@@ -170,3 +170,8 @@ CORS_ALLOW_HEADERS = (
     'Access-Control-Allow-Credentials',
     'x-authorization'
 )
+
+# Paypal
+PAYPAL_MODE = config('PAYPAL_MODE')
+PAYPAL_CLIENT_ID = config('PAYPAL_CLIENT_ID')
+PAYPAL_CLIENT_SECRET = config('PAYPAL_CLIENT_SECRET')

@@ -1,7 +1,7 @@
 from django.urls import path
-from .views import CardsView, TopUpBalanceView
+from .views import ChargeWithSavedCardView, PayPalCardsView
 
 urlpatterns = [
-    path('cards/', CardsView.as_view(), name='get-create-cards'),
-    path('topup/', TopUpBalanceView.as_view(), name='topup-balance'),
+    path('paypal/cards/charge/', ChargeWithSavedCardView.as_view(), name='charge-with-saved-card'),
+    path('paypal/cards/', PayPalCardsView.as_view(), name='paypal-cards-list-add'),
 ]
